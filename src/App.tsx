@@ -36,8 +36,8 @@ export default function App() {
       } else {
         throw new Error('無法載入詞彙資料');
       }
-    } catch (err) {
-      setError('載入資料時發生錯誤，請稍後再試。');
+    } catch (err: any) {
+      setError(`發生錯誤：${err.message || '請檢查網路或 API Key 設定'}`);
       setView('categories');
     }
   };
