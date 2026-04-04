@@ -1,75 +1,107 @@
-const fs = require('fs');
+/**
+ * generateAudio.cjs - Downloads missing TTS audio (concurrent version)
+ */
+'use strict';
+
+const fs   = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
-const categories = ['greetings', 'numbers', 'food', 'transport', 'shopping', 'daily'];
-const allWords = new Set();
-const allExamples = new Set();
+const CATS = ['greetings', 'numbers', 'food', 'transport', 'shopping', 'daily'];
+const words    = new Set();
+const examples = new Set();
 
-categories.forEach(cat => {
-  try {
-    const fileContent = fs.readFileSync(path.join(__dirname, `../src/data/categories/${cat}.ts`), 'utf8');
-    const jsonStr = fileContent.replace(new RegExp(`^export const ${cat} = `), '').replace(/;\s*$/, '');
-    const arr = JSON.parse(jsonStr);
-    arr.forEach(item => {
-      if (item.vietnamese) allWords.add(item.vietnamese);
-      if (item.example_vn) allExamples.add(item.example_vn);
-    });
-  } catch (err) {
-    console.error(`Error parsing ${cat}:`, err);
-  }
-});
-
-const wordsDir = path.join(__dirname, '../public/audio/words');
-const examplesDir = path.join(__dirname, '../public/audio/examples');
-fs.mkdirSync(wordsDir, { recursive: true });
-fs.mkdirSync(examplesDir, { recursive: true });
-
-function getHex(txt) {
-  return Buffer.from(txt).toString('hex');
+for (const cat of CATS) {
+  const src     = fs.readFileSync(path.join(__dirname, `../src/data/categories/${cat}.ts`), 'utf8');
+  const jsonStr = src.replace(new RegExp(`^export const ${cat} = `), '').replace(/;\s*$/, '');
+  JSON.parse(jsonStr).forEach(item => {
+    if (item.vietnamese?.trim())  words.add(item.vietnamese.trim());
+    if (item.example_vn?.trim()) examples.add(item.example_vn.trim());
+  });
 }
 
-const wArray = Array.from(allWords).filter(i => i.trim());
-const eArray = Array.from(allExamples).filter(i => i.trim());
-const total = wArray.length + eArray.length;
-console.log(`Starting download for ${total} items...`);
+function toHex(text) {
+  return Buffer.from(text.normalize('NFC'), 'utf8').toString('hex');
+}
 
-function runWorker(text, isExample) {
-  const hex = getHex(text);
-  const targetDir = isExample ? examplesDir : wordsDir;
-  const targetFile = path.join(targetDir, hex + '.mp3');
-  
-  if (fs.existsSync(targetFile)) return;
+const WORDS_DIR    = path.resolve(__dirname, '../public/audio/words');
+const EXAMPLES_DIR = path.resolve(__dirname, '../public/audio/examples');
+fs.mkdirSync(WORDS_DIR,    { recursive: true });
+fs.mkdirSync(EXAMPLES_DIR, { recursive: true });
 
-  const script = `
+const tasks = [];
+for (const t of words)    { const f = path.join(WORDS_DIR,    toHex(t) + '.mp3'); if (!fs.existsSync(f)) tasks.push([t, WORDS_DIR, f]); }
+for (const t of examples) { const f = path.join(EXAMPLES_DIR, toHex(t) + '.mp3'); if (!fs.existsSync(f)) tasks.push([t, EXAMPLES_DIR, f]); }
+
+console.log(`Missing: ${tasks.length}`);
+if (tasks.length === 0) { console.log('All present!'); process.exit(0); }
+
+const WORKER_CODE = `
+'use strict';
 const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
-const fs = require('fs');
-async function r() {
-  let tts = new MsEdgeTTS();
+const fs   = require('fs');
+const path = require('path');
+const TEXT = Buffer.from(process.env.TTS_TEXT_B64, 'base64').toString('utf8');
+const TMP  = process.env.TTS_TMPDIR;
+const DEST = process.env.TTS_DESTFILE;
+(async () => {
+  fs.mkdirSync(TMP, { recursive: true });
+  const tts = new MsEdgeTTS();
   await tts.setMetadata('vi-VN-HoaiMyNeural', OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-  await tts.toFile('${targetDir.replace(/\\/g, '/')}//tmp_${hex}', \`${text.replace(/`/g, '\\`')}\`);
-  fs.renameSync('${targetDir.replace(/\\/g, '/')}//tmp_${hex}//audio.mp3', '${targetFile.replace(/\\/g, '/')}');
-  fs.rmSync('${targetDir.replace(/\\/g, '/')}//tmp_${hex}', { recursive: true, force: true });
+  await tts.toFile(TMP, TEXT);
+  const src = path.join(TMP, 'audio.mp3');
+  if (fs.existsSync(src)) fs.renameSync(src, DEST);
+})().catch(() => {}).finally(() => {
+  try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
+  process.exit(0);
+});
+`;
+
+const WORKER_PATH = path.join(__dirname, '_tts_worker.cjs');
+fs.writeFileSync(WORKER_PATH, WORKER_CODE, 'utf8');
+
+function downloadSync(text, dir, dest) {
+  const hex    = toHex(text);
+  const tmpDir = path.join(dir, '_tmp_' + hex);
+  spawnSync(process.execPath, [WORKER_PATH], {
+    stdio: 'ignore',
+    timeout: 15000,
+    env: {
+      ...process.env,
+      TTS_TEXT_B64: Buffer.from(text, 'utf8').toString('base64'),
+      TTS_TMPDIR:   tmpDir,
+      TTS_DESTFILE: dest,
+    }
+  });
 }
-r().catch(e => { process.exit(1); });
-  `;
-  try {
-    execSync(`node -e "${script.replace(/\n/g, ' ')}"`, { stdio: 'ignore' });
-  } catch (e) {
+
+// Concurrent download with CONCURRENCY limit
+const CONCURRENCY = 6;
+
+async function runAll() {
+  let done = 0;
+  let idx  = 0;
+
+  async function runNext() {
+    while (idx < tasks.length) {
+      const [t, dir, f] = tasks[idx++];
+      await new Promise(resolve => {
+        setImmediate(() => {
+          downloadSync(t, dir, f);
+          done++;
+          process.stdout.write(`\rDownloaded: ${done}/${tasks.length}  `);
+          resolve();
+        });
+      });
+    }
   }
+
+  const workers = Array.from({ length: CONCURRENCY }, runNext);
+  await Promise.all(workers);
 }
 
-let c = 1;
-for (const text of wArray) {
-  runWorker(text, false);
-  process.stdout.write(`\rProgress: ${c}/${total}`);
-  c++;
-}
-
-for (const text of eArray) {
-  runWorker(text, true);
-  process.stdout.write(`\rProgress: ${c}/${total}`);
-  c++;
-}
-
-console.log("\nDone!");
+runAll().then(() => {
+  try { fs.unlinkSync(WORKER_PATH); } catch {}
+  console.log('\nAll done!');
+  process.exit(0);
+});
