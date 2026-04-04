@@ -3,7 +3,7 @@ import { VOCABULARY_DB } from '../data/vocabulary';
 export interface VocabularyItem {
   vietnamese: string;
   chinese: string;
-  pronunciation: string;
+  pronunciation?: string;
   example_vn: string;
   example_zh: string;
 }

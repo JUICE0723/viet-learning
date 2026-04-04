@@ -12,7 +12,7 @@ const CATEGORIES = [
   { id: 'transport', name: '交通與方向', icon: Plane, color: 'bg-teal-500' },
   { id: 'shopping', name: '購物', icon: ShoppingBag, color: 'bg-pink-500' },
   { id: 'daily', name: '日常生活', icon: BookOpen, color: 'bg-indigo-500' },
-  { id: 'favorites', name: '我的最愛', icon: Heart, color: 'bg-red-500' },
+  { id: '我的最愛', name: '我的最愛', icon: Heart, color: 'bg-red-500' },
 ];
 
 type ViewState = 'categories' | 'loading' | 'learning' | 'quiz';
@@ -105,7 +105,7 @@ export default function App() {
                   return (
                     <button
                       key={cat.id}
-                      onClick={() => handleSelectCategory(cat.name)}
+                      onClick={() => handleSelectCategory(cat.id)}
                       className="group relative bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all text-left overflow-hidden"
                     >
                       <div className={`absolute top-0 right-0 w-24 h-24 opacity-5 rounded-bl-full ${cat.color} transition-transform group-hover:scale-110`} />
@@ -130,7 +130,7 @@ export default function App() {
               className="flex flex-col items-center justify-center py-20"
             >
               <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-6" />
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">正在為您準備「{selectedCategory}」詞彙...</h2>
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">正在為您準備詞彙...</h2>
               <p className="text-gray-500 text-sm">AI 正在整理南越口音發音指南與實用例句</p>
             </motion.div>
           )}
