@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Volume2, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react';
-import { VocabularyItem } from '../lib/gemini';
+import { Volume2, ArrowRight, ArrowLeft, RotateCcw, Heart } from 'lucide-react';
+import { VocabularyItem, isFavorite, toggleFavorite } from '../lib/gemini';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface FlashcardProps {
@@ -15,18 +15,28 @@ interface FlashcardProps {
 export default function Flashcard({ item, onNext, onPrev, currentIndex, total, onFinish }: FlashcardProps) {
   const [isFlipped, setIsFlipped] = useState(false);
 
+  const [isFav, setIsFav] = useState(() => isFavorite(item.vietnamese));
+
+  React.useEffect(() => {
+    setIsFav(isFavorite(item.vietnamese));
+  }, [item]);
+
+  const handleToggleFavorite = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isNowFav = toggleFavorite(item);
+    setIsFav(isNowFav);
+  };
+
   const playAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const utterance = new SpeechSynthesisUtterance(item.vietnamese);
-    utterance.lang = 'vi-VN';
-    window.speechSynthesis.speak(utterance);
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodeURIComponent(item.vietnamese)}`;
+    new Audio(url).play().catch(err => console.error('Audio playback failed:', err));
   };
 
   const playExampleAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const utterance = new SpeechSynthesisUtterance(item.example_vn);
-    utterance.lang = 'vi-VN';
-    window.speechSynthesis.speak(utterance);
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodeURIComponent(item.example_vn)}`;
+    new Audio(url).play().catch(err => console.error('Audio playback failed:', err));
   };
 
   const handleNext = (e: React.MouseEvent) => {
@@ -65,12 +75,20 @@ export default function Flashcard({ item, onNext, onPrev, currentIndex, total, o
               transition={{ duration: 0.3 }}
               className="absolute inset-0 bg-white rounded-3xl shadow-xl border border-gray-100 flex flex-col items-center justify-center p-8 text-center"
             >
-              <button 
-                onClick={playAudio}
-                className="absolute top-6 right-6 p-3 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-              >
-                <Volume2 className="w-6 h-6" />
-              </button>
+              <div className="absolute top-6 right-6 flex flex-col gap-3">
+                <button 
+                  onClick={handleToggleFavorite}
+                  className={`p-3 rounded-full transition-colors ${isFav ? 'bg-red-50 text-red-500 hover:bg-red-100' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}
+                >
+                  <Heart className="w-6 h-6" fill={isFav ? "currentColor" : "none"} />
+                </button>
+                <button 
+                  onClick={playAudio}
+                  className="p-3 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                >
+                  <Volume2 className="w-6 h-6" />
+                </button>
+              </div>
               <h2 className="text-5xl font-bold text-gray-800 mb-6">{item.vietnamese}</h2>
               <p className="text-gray-400 text-sm flex items-center gap-2">
                 <RotateCcw className="w-4 h-4" /> 點擊卡片翻面看翻譯

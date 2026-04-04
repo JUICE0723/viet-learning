@@ -5,7 +5,7 @@ import { motion } from 'motion/react';
 
 interface QuizProps {
   vocabulary: VocabularyItem[];
-  onFinish: (score: number) => void;
+  onFinish: (score: number, wrongAnswers?: VocabularyItem[]) => void;
 }
 
 export default function Quiz({ vocabulary, onFinish }: QuizProps) {
@@ -17,6 +17,7 @@ export default function Quiz({ vocabulary, onFinish }: QuizProps) {
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [score, setScore] = useState(0);
   const [showResult, setShowResult] = useState(false);
+  const [wrongAnswers, setWrongAnswers] = useState<VocabularyItem[]>([]);
 
   useEffect(() => {
     // Generate questions
@@ -45,6 +46,13 @@ export default function Quiz({ vocabulary, onFinish }: QuizProps) {
     const isCorrect = option === questions[currentIndex].word.chinese;
     if (isCorrect) {
       setScore(score + 1);
+    } else {
+      setWrongAnswers(prev => {
+        if (!prev.find(w => w.vietnamese === questions[currentIndex].word.vietnamese)) {
+          return [...prev, questions[currentIndex].word];
+        }
+        return prev;
+      });
     }
   };
 
@@ -73,12 +81,22 @@ export default function Quiz({ vocabulary, onFinish }: QuizProps) {
         <p className="text-gray-600 mb-8">
           你答對了 {score} 題，共 {questions.length} 題。
         </p>
-        <button
-          onClick={() => onFinish(score)}
-          className="w-full py-4 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-        >
-          <RotateCcw className="w-5 h-5" /> 回到主選單
-        </button>
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => onFinish(score)}
+            className="w-full py-4 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <RotateCcw className="w-5 h-5" /> 回到主選單
+          </button>
+          {wrongAnswers.length > 0 && (
+            <button
+              onClick={() => onFinish(score, wrongAnswers)}
+              className="w-full py-3 bg-red-50 text-red-600 border border-red-100 rounded-xl font-semibold hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+            >
+              複習錯題區 ({wrongAnswers.length})
+            </button>
+          )}
+        </div>
       </motion.div>
     );
   }

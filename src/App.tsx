@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, Coffee, Plane, ShoppingBag, Clock, MessageCircle, BrainCircuit, Loader2, ChevronLeft } from 'lucide-react';
+import { BookOpen, Coffee, Plane, ShoppingBag, Clock, MessageCircle, BrainCircuit, Loader2, ChevronLeft, Heart } from 'lucide-react';
 import { fetchVocabulary, VocabularyItem } from './lib/gemini';
 import Flashcard from './components/Flashcard';
 import Quiz from './components/Quiz';
@@ -12,6 +12,7 @@ const CATEGORIES = [
   { id: 'transport', name: '交通與方向', icon: Plane, color: 'bg-teal-500' },
   { id: 'shopping', name: '購物', icon: ShoppingBag, color: 'bg-pink-500' },
   { id: 'daily', name: '日常生活', icon: BookOpen, color: 'bg-indigo-500' },
+  { id: 'favorites', name: '我的最愛', icon: Heart, color: 'bg-red-500' },
 ];
 
 type ViewState = 'categories' | 'loading' | 'learning' | 'quiz';
@@ -37,7 +38,7 @@ export default function App() {
         throw new Error('無法載入詞彙資料');
       }
     } catch (err: any) {
-      setError(`發生錯誤：${err.message || '請檢查網路或 API Key 設定'}`);
+      setError(`無法取得資料，請確保您有加入最愛，或嘗試其他分類。`);
       setView('categories');
     }
   };
@@ -162,7 +163,15 @@ export default function App() {
             >
               <Quiz 
                 vocabulary={vocabulary} 
-                onFinish={() => handleBackToCategories()} 
+                onFinish={(score, wrongAnswers) => {
+                  if (wrongAnswers && wrongAnswers.length > 0) {
+                    setVocabulary(wrongAnswers);
+                    setCurrentIndex(0);
+                    setView('learning');
+                  } else {
+                    handleBackToCategories();
+                  }
+                }} 
               />
             </motion.div>
           )}
