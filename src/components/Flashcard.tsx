@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Volume2, ArrowRight, ArrowLeft, RotateCcw, Heart } from 'lucide-react';
+import { Volume2, ArrowRight, ArrowLeft, RotateCcw, Heart, Loader2 } from 'lucide-react';
 import { VocabularyItem, isFavorite, toggleFavorite } from '../lib/gemini';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -14,11 +14,13 @@ interface FlashcardProps {
 
 export default function Flashcard({ item, onNext, onPrev, currentIndex, total, onFinish }: FlashcardProps) {
   const [isFlipped, setIsFlipped] = useState(false);
-
   const [isFav, setIsFav] = useState(() => isFavorite(item.vietnamese));
+  const [playingWord, setPlayingWord] = useState(false);
+  const [playingExample, setPlayingExample] = useState(false);
 
   React.useEffect(() => {
     setIsFav(isFavorite(item.vietnamese));
+    setIsFlipped(false);
   }, [item]);
 
   const handleToggleFavorite = (e: React.MouseEvent) => {
@@ -27,21 +29,57 @@ export default function Flashcard({ item, onNext, onPrev, currentIndex, total, o
     setIsFav(isNowFav);
   };
 
-  const getHexPath = (text: string, type: 'words' | 'examples') => {
-    const hex = Array.from(new TextEncoder().encode(text)).map(b => b.toString(16).padStart(2, '0')).join('');
-    return `/audio/${type}/${hex}.mp3`;
+  const textToHex = (text: string): string => {
+    const bytes = new TextEncoder().encode(text.normalize('NFC'));
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
+  const playAudioWithFallback = async (
+    text: string,
+    type: 'words' | 'examples',
+    setPlaying: (v: boolean) => void
+  ) => {
+    setPlaying(true);
+    const hex = textToHex(text);
+    const localUrl = `/audio/${type}/${hex}.mp3`;
+    const fallbackUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodeURIComponent(text)}`;
+
+    const tryPlay = (url: string) =>
+      new Promise<void>((resolve, reject) => {
+        const audio = new Audio(url);
+        audio.onended = () => resolve();
+        audio.onerror = () => reject(new Error('audio error'));
+        audio.play().catch(reject);
+      });
+
+    try {
+      const res = await fetch(localUrl, { method: 'HEAD' });
+      if (res.ok) {
+        await tryPlay(localUrl);
+      } else {
+        await tryPlay(fallbackUrl);
+      }
+    } catch {
+      try {
+        await tryPlay(fallbackUrl);
+      } catch {
+        console.error('Audio playback completely failed for:', text);
+      }
+    } finally {
+      setPlaying(false);
+    }
   };
 
   const playAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = getHexPath(item.vietnamese, 'words');
-    new Audio(url).play().catch(err => console.error('Audio playback failed:', err));
+    if (playingWord) return;
+    playAudioWithFallback(item.vietnamese, 'words', setPlayingWord);
   };
 
   const playExampleAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = getHexPath(item.example_vn, 'examples');
-    new Audio(url).play().catch(err => console.error('Audio playback failed:', err));
+    if (playingExample) return;
+    playAudioWithFallback(item.example_vn, 'examples', setPlayingExample);
   };
 
   const handleNext = (e: React.MouseEvent) => {
@@ -59,6 +97,24 @@ export default function Flashcard({ item, onNext, onPrev, currentIndex, total, o
     setIsFlipped(false);
     onPrev();
   };
+
+  const AudioButton = ({
+    onClick,
+    playing,
+    className,
+    iconSize = 'w-5 h-5',
+  }: {
+    onClick: (e: React.MouseEvent) => void;
+    playing: boolean;
+    className: string;
+    iconSize?: string;
+  }) => (
+    <button onClick={onClick} className={className} disabled={playing}>
+      {playing
+        ? <Loader2 className={`${iconSize} animate-spin`} />
+        : <Volume2 className={iconSize} />}
+    </button>
+  );
 
   return (
     <div className="w-full max-w-md mx-auto flex flex-col items-center">
@@ -87,12 +143,12 @@ export default function Flashcard({ item, onNext, onPrev, currentIndex, total, o
                 >
                   <Heart className="w-6 h-6" fill={isFav ? "currentColor" : "none"} />
                 </button>
-                <button 
+                <AudioButton
                   onClick={playAudio}
-                  className="p-3 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                >
-                  <Volume2 className="w-6 h-6" />
-                </button>
+                  playing={playingWord}
+                  className="p-3 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors disabled:opacity-60"
+                  iconSize="w-6 h-6"
+                />
               </div>
               <h2 className="text-5xl font-bold text-gray-800 mb-6">{item.vietnamese}</h2>
               <p className="text-gray-400 text-sm flex items-center gap-2">
@@ -113,12 +169,11 @@ export default function Flashcard({ item, onNext, onPrev, currentIndex, total, o
                   <h2 className="text-3xl font-bold text-gray-800 mb-2">{item.chinese}</h2>
                   <p className="text-lg text-blue-600 font-medium">{item.vietnamese}</p>
                 </div>
-                <button 
+                <AudioButton
                   onClick={playAudio}
-                  className="p-2 rounded-full bg-white text-blue-600 hover:bg-blue-50 shadow-sm transition-colors"
-                >
-                  <Volume2 className="w-5 h-5" />
-                </button>
+                  playing={playingWord}
+                  className="p-2 rounded-full bg-white text-blue-600 hover:bg-blue-50 shadow-sm transition-colors disabled:opacity-60"
+                />
               </div>
 
               <div className="space-y-6 flex-grow">
@@ -130,12 +185,12 @@ export default function Flashcard({ item, onNext, onPrev, currentIndex, total, o
                 <div className="bg-white/60 rounded-xl p-4">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">例句</h3>
-                    <button 
+                    <AudioButton
                       onClick={playExampleAudio}
-                      className="p-1.5 rounded-full text-gray-400 hover:text-blue-600 hover:bg-white transition-colors"
-                    >
-                      <Volume2 className="w-4 h-4" />
-                    </button>
+                      playing={playingExample}
+                      className="p-1.5 rounded-full text-gray-400 hover:text-blue-600 hover:bg-white transition-colors disabled:opacity-60"
+                      iconSize="w-4 h-4"
+                    />
                   </div>
                   <p className="text-gray-800 font-medium mb-2">{item.example_vn}</p>
                   <p className="text-gray-600 text-sm">{item.example_zh}</p>
