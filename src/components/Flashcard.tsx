@@ -27,15 +27,20 @@ export default function Flashcard({ item, onNext, onPrev, currentIndex, total, o
     setIsFav(isNowFav);
   };
 
+  const getHexPath = (text: string, type: 'words' | 'examples') => {
+    const hex = Array.from(new TextEncoder().encode(text)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return `/audio/${type}/${hex}.mp3`;
+  };
+
   const playAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodeURIComponent(item.vietnamese)}`;
+    const url = getHexPath(item.vietnamese, 'words');
     new Audio(url).play().catch(err => console.error('Audio playback failed:', err));
   };
 
   const playExampleAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=vi&q=${encodeURIComponent(item.example_vn)}`;
+    const url = getHexPath(item.example_vn, 'examples');
     new Audio(url).play().catch(err => console.error('Audio playback failed:', err));
   };
 
